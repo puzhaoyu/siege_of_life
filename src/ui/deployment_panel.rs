@@ -168,7 +168,10 @@ pub fn deployment_panel_ui(
             });
             if start_response.inner.clicked() && can_start {
                 if is_sim_deploy {
-                    // 模拟器：进入试玩演化模式
+                    if !has_deployed {
+                        return;
+                    }
+                    // 模拟器：进入试玩演化模式（步数上限由 steps_per_deployment 控制）
                     evo_config.is_paused = false;
                     evo_config.current_step = 0;
                     evo_config.timer = 0.0;
@@ -210,7 +213,6 @@ pub fn deployment_panel_ui(
                     .clicked()
                 {
                     if is_sim_deploy {
-                        // 模拟器中返回编辑（注意：快照恢复由 simulator_panel 的返回按钮处理）
                         next_sim_state.set(SimulatorState::Editing);
                     } else {
                         next_state.set(AppState::LevelSelect);

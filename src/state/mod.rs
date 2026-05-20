@@ -118,10 +118,10 @@ impl Default for SimulatorDeployConfig {
     }
 }
 
-/// 模拟器网格快照：试玩后恢复用
+/// 模拟器网格快照：进入试玩前保存，返回编辑时恢复
 #[derive(Resource, Clone, Default)]
 pub struct SimulatorSnapshot {
-    pub cells: Option<Vec<Vec<crate::grid::CellType>>>,
+    pub grid: Option<crate::grid::GridSnapshot>,
     pub zone: Option<Vec<crate::grid::GridCoord>>,
 }
 
@@ -147,6 +147,23 @@ impl Default for ZoneBrushConfig {
     }
 }
 
+/// 橡皮擦配置（模拟器编辑模式）
+#[derive(Resource, Clone)]
+pub struct EraserConfig {
+    pub active: bool,
+    /// 圆形擦除半径（1–5 格）
+    pub radius: u32,
+}
+
+impl Default for EraserConfig {
+    fn default() -> Self {
+        Self {
+            active: false,
+            radius: 1,
+        }
+    }
+}
+
 pub struct StatePlugin;
 
 impl Plugin for StatePlugin {
@@ -163,10 +180,15 @@ impl Plugin for StatePlugin {
             .insert_resource(SimulatorSnapshot::default())
             .insert_resource(DeploymentZoneData::default())
             .insert_resource(ZoneBrushConfig::default())
+            .insert_resource(EraserConfig::default())
             // 注册状态系统
             .add_systems(OnEnter(AppState::Deployment), deployment::enter_deployment)
             .add_systems(OnEnter(AppState::Evolution), evolution::enter_evolution)
             .add_systems(OnEnter(AppState::Simulator), simulator::enter_simulator)
+            .add_systems(
+                OnEnter(SimulatorState::Editing),
+                simulator::restore_simulator_editing_snapshot,
+            )
             .add_systems(
                 Update,
                 (

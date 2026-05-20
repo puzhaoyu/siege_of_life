@@ -68,7 +68,6 @@ pub fn drag_drop_system(
             if *state.get() == AppState::Deployment {
                 next_state.set(AppState::LevelSelect);
             } else {
-                // 模拟器中 ESC 返回编辑（由 simulator_panel 处理更完整的恢复）
                 next_sim_state.set(SimulatorState::Editing);
             }
         }

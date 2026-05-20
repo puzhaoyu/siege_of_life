@@ -3,21 +3,11 @@ use bevy_egui::EguiContexts;
 
 use crate::grid::{CellType, Grid, GridCoord};
 use crate::render::grid_renderer::screen_to_grid;
-use crate::state::{AppState, DeploymentZoneData, SelectedElement, SelectedPattern, SimulatorState, ZoneBrushConfig};
+use crate::state::{
+    AppState, DeploymentZoneData, EraserConfig, SelectedElement, SelectedPattern, SimulatorState,
+    ZoneBrushConfig,
+};
 use crate::patterns;
-
-/// 模拟器绘制模式
-#[derive(Resource, Clone, PartialEq, Eq)]
-pub enum DrawMode {
-    Draw,
-    Erase,
-}
-
-impl Default for DrawMode {
-    fn default() -> Self {
-        DrawMode::Draw
-    }
-}
 
 /// 绘制历史记录（用于撤销）
 #[derive(Resource, Clone, Default)]
@@ -34,8 +24,8 @@ pub fn drawing_system(
     selected_element: Res<SelectedElement>,
     selected_pattern: Res<SelectedPattern>,
     zone_brush: Res<ZoneBrushConfig>,
+    eraser: Res<EraserConfig>,
     mut zone_data: ResMut<DeploymentZoneData>,
-    mut draw_mode: Local<DrawMode>,
     mut last_draw_coord: Local<Option<GridCoord>>,
     mouse_input: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
@@ -98,14 +88,38 @@ pub fn drawing_system(
         return;
     }
 
-    // 普通绘制模式
-    if mouse_input.just_pressed(MouseButton::Right) {
-        *draw_mode = DrawMode::Erase;
-    }
-    if mouse_input.just_released(MouseButton::Right) {
-        *draw_mode = DrawMode::Draw;
+    // 橡皮擦模式（圆形笔刷，可擦除任意非空格）
+    if eraser.active {
+        if !mouse_input.pressed(MouseButton::Left) {
+            *last_draw_coord = None;
+            return;
+        }
+
+        if *last_draw_coord == Some(coord) {
+            return;
+        }
+        *last_draw_coord = Some(coord);
+
+        let brush_coords = get_circular_brush_coords(coord, eraser.radius, &grid);
+        let mut changed = Vec::new();
+        for c in brush_coords {
+            let old = grid.get(c);
+            if !old.is_empty() {
+                changed.push((c, old));
+                grid.set(c, CellType::Empty);
+            }
+        }
+
+        if !changed.is_empty() {
+            draw_history.history.push(changed);
+            if draw_history.history.len() > 100 {
+                draw_history.history.remove(0);
+            }
+        }
+        return;
     }
 
+    // 普通绘制模式
     let is_pressed = mouse_input.pressed(MouseButton::Left);
     let just_pressed = mouse_input.just_pressed(MouseButton::Left);
 
@@ -121,10 +135,7 @@ pub fn drawing_system(
 
     let mut changed = Vec::new();
 
-    if *draw_mode == DrawMode::Erase {
-        changed.push((coord, CellType::Empty));
-        grid.set(coord, CellType::Empty);
-    } else if let Some(ref pattern_name) = selected_pattern.0 {
+    if let Some(ref pattern_name) = selected_pattern.0 {
         if just_pressed {
             if let Some(cells) = patterns::get_pattern_by_name(pattern_name, coord) {
                 for (c, ct) in &cells {
@@ -149,7 +160,31 @@ pub fn drawing_system(
     }
 }
 
-/// 根据画笔大小获取影响的坐标列表
+/// 圆形橡皮擦笔刷（半径为格数，欧几里得距离）
+fn get_circular_brush_coords(center: GridCoord, radius: u32, grid: &Grid) -> Vec<GridCoord> {
+    let mut coords = Vec::new();
+    let r = radius as isize;
+    let r_sq = (radius as isize) * (radius as isize);
+
+    for dx in -r..=r {
+        for dy in -r..=r {
+            if dx * dx + dy * dy > r_sq {
+                continue;
+            }
+            let nx = center.x as isize + dx;
+            let ny = center.y as isize + dy;
+            if nx >= 0 && ny >= 0 {
+                let c = GridCoord::new(nx as usize, ny as usize);
+                if grid.in_bounds(c) {
+                    coords.push(c);
+                }
+            }
+        }
+    }
+    coords
+}
+
+/// 根据画笔大小获取影响的坐标列表（方形，用于部署区域）
 fn get_brush_coords(center: GridCoord, size: u32, grid: &Grid) -> Vec<GridCoord> {
     let mut coords = Vec::new();
     let radius = (size as isize - 1).max(0);

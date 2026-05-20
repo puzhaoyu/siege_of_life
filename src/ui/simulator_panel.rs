@@ -1,15 +1,16 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
 
-use crate::grid::{CellType, Faction, Grid};
+use crate::grid::{CellType, Faction};
 use crate::gol::engine;
-use crate::level::data::LevelData;
 use crate::patterns;
+use crate::ui::level_io::{
+    open_save_modal, request_open_browse, show_save_level_modal, SimulatorEditingParams,
+};
 use crate::player::deploy::DragDeployState;
 use crate::player::resources::DeploymentResources;
 use crate::state::{
-    AppState, DeploymentZoneData, DialogMessage, EvolutionConfig, SelectedElement, SelectedPattern,
-    SimulatorDeployConfig, SimulatorSnapshot, SimulatorState, ZoneBrushConfig,
+    AppState, EvolutionConfig, SelectedElement, SelectedPattern, SimulatorSnapshot, SimulatorState,
 };
 use crate::ui::common::show_confirm_dialog;
 
@@ -18,19 +19,15 @@ pub fn simulator_panel_ui(
     mut contexts: EguiContexts,
     state: Res<State<AppState>>,
     sim_state: Res<State<SimulatorState>>,
-    mut grid: ResMut<Grid>,
     mut evo_config: ResMut<EvolutionConfig>,
     mut selected_element: ResMut<SelectedElement>,
     mut selected_pattern: ResMut<SelectedPattern>,
-    mut dialog: ResMut<DialogMessage>,
     mut next_state: ResMut<NextState<AppState>>,
     mut next_sim_state: ResMut<NextState<SimulatorState>>,
-    mut deploy_config: ResMut<SimulatorDeployConfig>,
     mut deploy_res: ResMut<DeploymentResources>,
     mut snapshot: ResMut<SimulatorSnapshot>,
     mut drag_state: ResMut<DragDeployState>,
-    mut zone_data: ResMut<DeploymentZoneData>,
-    mut zone_brush: ResMut<ZoneBrushConfig>,
+    mut editing: SimulatorEditingParams,
 ) {
     if *state.get() != AppState::Simulator {
         return;
@@ -43,15 +40,25 @@ pub fn simulator_panel_ui(
 
     let ctx = contexts.ctx_mut();
 
+    show_save_level_modal(
+        ctx,
+        editing.file_dialog.as_mut(),
+        editing.level_meta.as_mut(),
+        &editing.grid,
+        &editing.zone_data,
+        &editing.deploy_config,
+        editing.dialog.as_mut(),
+    );
+
     // 弹出对话框
-    let show_msg = dialog.0.clone();
+    let show_msg = editing.dialog.0.clone();
     if let Some(ref msg) = show_msg {
         let mut closed = false;
         crate::ui::common::show_dialog(ctx, msg, || {
             closed = true;
         });
         if closed {
-            dialog.0 = None;
+            editing.dialog.0 = None;
         }
     }
 
@@ -101,6 +108,7 @@ pub fn simulator_panel_ui(
                                 .clicked()
                             {
                                 selected_pattern.0 = None;
+                                editing.eraser.active = false;
                             }
                         }
                     });
@@ -114,25 +122,65 @@ pub fn simulator_panel_ui(
                         if ui
                             .selectable_value(&mut selected_pattern.0, None, "无")
                             .clicked()
-                        {}
+                        {
+                            editing.eraser.active = false;
+                        }
                         scrollable_pattern_list(
                             ui,
                             &mut selected_pattern.0,
                             patterns::still_life_names(),
+                            || editing.eraser.active = false,
                         );
                         ui.separator();
                         scrollable_pattern_list(
                             ui,
                             &mut selected_pattern.0,
                             patterns::oscillator_names(),
+                            || editing.eraser.active = false,
                         );
                         ui.separator();
                         scrollable_pattern_list(
                             ui,
                             &mut selected_pattern.0,
                             patterns::deployable_names(),
+                            || editing.eraser.active = false,
                         );
                     });
+
+                ui.add_space(8.0);
+                ui.separator();
+
+                // ---- 橡皮擦 ----
+                ui.label(egui::RichText::new("橡皮擦").strong());
+                ui.add_space(4.0);
+
+                let eraser_label = if editing.eraser.active {
+                    "橡皮擦: 开启"
+                } else {
+                    "橡皮擦: 关闭"
+                };
+                if ui.button(eraser_label).clicked() {
+                    editing.eraser.active = !editing.eraser.active;
+                    if editing.eraser.active {
+                        editing.zone_brush.active = false;
+                        selected_pattern.0 = None;
+                    }
+                }
+
+                ui.horizontal(|ui| {
+                    ui.label("半径:");
+                    let mut radius = editing.eraser.radius as i32;
+                    if ui.add(egui::Slider::new(&mut radius, 1..=5)).changed() {
+                        editing.eraser.radius = radius as u32;
+                    }
+                });
+
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new("左键拖动擦除任意方块")
+                        .weak()
+                        .size(11.0),
+                );
 
                 ui.add_space(8.0);
                 ui.separator();
@@ -143,23 +191,23 @@ pub fn simulator_panel_ui(
 
                 ui.horizontal(|ui| {
                     ui.label("滑翔机:");
-                    let mut gliders = deploy_config.max_gliders as i32;
+                    let mut gliders = editing.deploy_config.max_gliders as i32;
                     if ui
                         .add(egui::DragValue::new(&mut gliders).range(0..=10).speed(0.1))
                         .changed()
                     {
-                        deploy_config.max_gliders = gliders.max(0) as u32;
+                        editing.deploy_config.max_gliders = gliders.max(0) as u32;
                     }
                 });
 
                 ui.horizontal(|ui| {
                     ui.label("轻型飞船:");
-                    let mut lwss = deploy_config.max_lwss as i32;
+                    let mut lwss = editing.deploy_config.max_lwss as i32;
                     if ui
                         .add(egui::DragValue::new(&mut lwss).range(0..=5).speed(0.1))
                         .changed()
                     {
-                        deploy_config.max_lwss = lwss.max(0) as u32;
+                        editing.deploy_config.max_lwss = lwss.max(0) as u32;
                     }
                 });
 
@@ -170,32 +218,35 @@ pub fn simulator_panel_ui(
                 ui.label(egui::RichText::new("部署区域").strong());
                 ui.add_space(4.0);
 
-                let brush_label = if zone_brush.active {
+                let brush_label = if editing.zone_brush.active {
                     "画笔: 开启"
                 } else {
                     "画笔: 关闭"
                 };
                 if ui.button(brush_label).clicked() {
-                    zone_brush.active = !zone_brush.active;
+                    editing.zone_brush.active = !editing.zone_brush.active;
+                    if editing.zone_brush.active {
+                        editing.eraser.active = false;
+                    }
                 }
 
                 ui.horizontal(|ui| {
                     ui.label("画笔大小:");
-                    let mut size = zone_brush.size as i32;
+                    let mut size = editing.zone_brush.size as i32;
                     if ui.add(egui::Slider::new(&mut size, 1..=5)).changed() {
-                        zone_brush.size = size as u32;
+                        editing.zone_brush.size = size as u32;
                     }
                 });
 
-                ui.label(format!("区域格数: {}", zone_data.zone.len()));
+                ui.label(format!("区域格数: {}", editing.zone_data.zone.len()));
 
                 if ui.button("清除区域").clicked() {
-                    zone_data.zone.clear();
+                    editing.zone_data.zone.clear();
                 }
 
                 ui.add_space(4.0);
                 ui.label(
-                    egui::RichText::new("左键绘制 / 右键擦除")
+                    egui::RichText::new("左键绘制部署区域")
                         .weak()
                         .size(11.0),
                 );
@@ -215,15 +266,18 @@ pub fn simulator_panel_ui(
                     )
                     .clicked()
                 {
-                    // 保存当前网格快照和区域数据
-                    snapshot.cells = Some(grid.cells.clone());
-                    snapshot.zone = Some(zone_data.zone.clone());
+                    // 保存进入试玩前的关卡（网格 + 部署区域）
+                    snapshot.grid = Some(editing.grid.snapshot());
+                    snapshot.zone = Some(editing.zone_data.zone.clone());
                     // 关闭区域画笔
-                    zone_brush.active = false;
+                    editing.zone_brush.active = false;
                     // 初始化部署资源
-                    deploy_res.remaining_gliders = deploy_config.max_gliders;
-                    deploy_res.remaining_lwss = deploy_config.max_lwss;
+                    deploy_res.remaining_gliders = editing.deploy_config.max_gliders;
+                    deploy_res.remaining_lwss = editing.deploy_config.max_lwss;
                     deploy_res.deployed_this_round = false;
+                    evo_config.current_step = 0;
+                    evo_config.is_paused = true;
+                    evo_config.timer = 0.0;
                     // 重置拖拽状态
                     *drag_state = DragDeployState::default();
                     // 进入部署测试模式
@@ -250,8 +304,8 @@ pub fn simulator_panel_ui(
                         evo_config.is_paused = !evo_config.is_paused;
                     }
                     if ui.button("单步").clicked() {
-                        let (_changed, _bomb_result) = engine::evolution_step(&mut grid);
-                        engine::check_high_value_destruction(&mut grid);
+                        let (_changed, _bomb_result) = engine::evolution_step(&mut editing.grid);
+                        engine::check_high_value_destruction(&mut editing.grid);
                         evo_config.current_step += 1;
                     }
                 });
@@ -267,7 +321,10 @@ pub fn simulator_panel_ui(
                     }
                 });
 
-                ui.label(format!("已演化: {} 步", evo_config.current_step));
+                ui.label(format!(
+                    "已演化: {}/{} 步",
+                    evo_config.current_step, evo_config.steps_per_deployment
+                ));
 
                 ui.add_space(8.0);
                 ui.separator();
@@ -285,23 +342,6 @@ pub fn simulator_panel_ui(
                     )
                     .clicked()
                 {
-                    // 恢复网格快照
-                    if let Some(ref saved_cells) = snapshot.cells {
-                        grid.cells = saved_cells.clone();
-                    }
-                    // 恢复区域数据
-                    if let Some(ref saved_zone) = snapshot.zone {
-                        zone_data.zone = saved_zone.clone();
-                    }
-                    snapshot.cells = None;
-                    snapshot.zone = None;
-                    // 重置演化状态
-                    evo_config.is_paused = true;
-                    evo_config.current_step = 0;
-                    evo_config.timer = 0.0;
-                    // 重置拖拽状态
-                    *drag_state = DragDeployState::default();
-                    // 返回编辑模式
                     next_sim_state.set(SimulatorState::Editing);
                 }
 
@@ -319,7 +359,7 @@ pub fn simulator_panel_ui(
                         "确认清空",
                         "确定要清除网格上所有内容吗？",
                         || {
-                            grid.clear();
+                            editing.grid.clear();
                         },
                         || {},
                     );
@@ -328,50 +368,23 @@ pub fn simulator_panel_ui(
                 ui.add_space(8.0);
                 ui.separator();
 
-                // ---- 导出/导入 ----
-                ui.label(egui::RichText::new("关卡管理").strong());
+                // ---- 保存/打开 ----
+                ui.label(egui::RichText::new("关卡文件").strong());
 
-                if ui.button("导出 JSON").clicked() {
-                    let width = grid.width;
-                    let height = grid.height;
-                    let level_data = LevelData {
-                        id: "custom_level".to_string(),
-                        name: "自定义关卡".to_string(),
-                        version: 1,
-                        width,
-                        height,
-                        initial_cells: grid.cells.clone(),
-                        deployment_zone: zone_data.zone.clone(),
-                        max_gliders: deploy_config.max_gliders,
-                        max_lwss: deploy_config.max_lwss,
-                        evolution_steps: 200,
-                    };
-                    if let Ok(json) = serde_json::to_string_pretty(&level_data) {
-                        let path = std::env::current_dir()
-                            .unwrap_or_default()
-                            .join("custom_level.json");
-                        let _ = std::fs::write(&path, &json);
-                        dialog.0 = Some(format!("已导出到: {}", path.display()));
-                    }
+                if !editing.level_meta.name.is_empty() {
+                    ui.label(
+                        egui::RichText::new(format!("当前: {}", editing.level_meta.name))
+                            .weak()
+                            .size(11.0),
+                    );
                 }
 
-                if ui.button("导入 JSON").clicked() {
-                    let path = std::env::current_dir()
-                        .unwrap_or_default()
-                        .join("custom_level.json");
-                    if path.exists() {
-                        if let Ok(content) = std::fs::read_to_string(&path) {
-                            if let Ok(data) = serde_json::from_str::<LevelData>(&content) {
-                                crate::state::deployment::load_level_to_grid(&mut grid, &data);
-                                deploy_config.max_gliders = data.max_gliders;
-                                deploy_config.max_lwss = data.max_lwss;
-                                zone_data.zone = data.deployment_zone.clone();
-                                dialog.0 = Some("关卡已导入".to_string());
-                            }
-                        }
-                    } else {
-                        dialog.0 = Some("未找到 custom_level.json".to_string());
-                    }
+                if ui.button("保存关卡…").clicked() {
+                    open_save_modal(editing.file_dialog.as_mut(), &editing.level_meta);
+                }
+
+                if ui.button("打开关卡…").clicked() {
+                    request_open_browse(editing.file_dialog.as_mut(), &editing.level_meta);
                 }
 
                 ui.add_space(8.0);
@@ -389,10 +402,10 @@ pub fn simulator_panel_ui(
                 evo_config.is_paused = true;
                 evo_config.current_step = 0;
                 evo_config.timer = 0.0;
-                snapshot.cells = None;
-                snapshot.zone = None;
+                *snapshot = SimulatorSnapshot::default();
                 *drag_state = DragDeployState::default();
-                zone_brush.active = false;
+                editing.zone_brush.active = false;
+                editing.eraser.active = false;
                 next_sim_state.set(SimulatorState::Editing);
                 next_state.set(AppState::MainMenu);
             }
@@ -410,11 +423,18 @@ fn cell_type_name(ct: &CellType) -> &'static str {
     }
 }
 
-fn scrollable_pattern_list(ui: &mut egui::Ui, selected: &mut Option<String>, names: Vec<&str>) {
+fn scrollable_pattern_list(
+    ui: &mut egui::Ui,
+    selected: &mut Option<String>,
+    names: Vec<&str>,
+    mut on_select: impl FnMut(),
+) {
     for name in names {
         if ui
             .selectable_value(selected, Some(name.to_string()), name)
             .clicked()
-        {}
+        {
+            on_select();
+        }
     }
 }

@@ -205,8 +205,14 @@ def gen_level_03():
     return g
 
 
+def left_half_deployment(width=W, height=H):
+    """左半区域为可部署区：0 <= x < width/2, 0 <= y < height"""
+    hw = width // 2
+    return [{"x": x, "y": y} for x in range(hw) for y in range(height)]
+
+
 def make_level(lid, name, grid, max_gliders=3, max_lwss=2, evo_steps=200):
-    dep_zone = [{"x": 5 + dx, "y": 30 + dy} for dx in range(5) for dy in range(5)]
+    dep_zone = left_half_deployment()
     return {
         "id": lid,
         "name": name,

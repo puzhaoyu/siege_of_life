@@ -2,11 +2,12 @@ use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
 
 use crate::player::resources::DeploymentResources;
-use crate::state::{AppState, EvolutionConfig};
+use crate::state::{AppState, EvolutionConfig, SimulatorState};
 
 pub fn hud_ui(
     mut contexts: EguiContexts,
     state: Res<State<AppState>>,
+    sim_state: Res<State<SimulatorState>>,
     evo_config: Res<EvolutionConfig>,
     deploy_res: Res<DeploymentResources>,
 ) {
@@ -28,7 +29,10 @@ pub fn hud_ui(
             ui.separator();
 
             // 演化步数
-            if *state.get() == AppState::Evolution {
+            let show_steps = *state.get() == AppState::Evolution
+                || (*state.get() == AppState::Simulator
+                    && *sim_state.get() == SimulatorState::TrialPlay);
+            if show_steps {
                 ui.label(
                     egui::RichText::new(format!(
                         "步数: {}/{}",
@@ -41,7 +45,12 @@ pub fn hud_ui(
             ui.separator();
 
             // 部署资源
-            if *state.get() == AppState::Deployment || *state.get() == AppState::Evolution {
+            let show_deploy_res = *state.get() == AppState::Deployment
+                || *state.get() == AppState::Evolution
+                || (*state.get() == AppState::Simulator
+                    && (*sim_state.get() == SimulatorState::DeploymentTest
+                        || *sim_state.get() == SimulatorState::TrialPlay));
+            if show_deploy_res {
                 ui.label(
                     egui::RichText::new(format!(
                         "滑翔机: {}  LWSS: {}",

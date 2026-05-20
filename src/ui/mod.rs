@@ -1,4 +1,5 @@
 pub mod common;
+pub mod level_io;
 pub mod main_menu;
 pub mod level_select_ui;
 pub mod hud;
@@ -13,21 +14,30 @@ use self::level_select_ui::level_select_ui;
 use self::main_menu::main_menu_ui;
 use self::simulator_panel::simulator_panel_ui;
 use self::deployment_panel::deployment_panel_ui;
+use self::level_io::{
+    apply_pending_level_load, poll_native_file_dialogs, SimulatorLevelMeta,
+};
 
 pub struct UiPlugin;
 
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_chinese_font)
+        app.init_resource::<SimulatorLevelMeta>()
+            .init_resource::<level_io::LevelFileDialogState>()
+            .add_systems(Startup, setup_chinese_font)
             .add_systems(
                 Update,
                 (
+                    poll_native_file_dialogs,
+                    apply_pending_level_load,
                     main_menu_ui,
                     level_select_ui,
                     hud_ui,
-                    simulator_panel_ui,
-                    deployment_panel_ui,
                 ),
+            )
+            .add_systems(
+                Update,
+                (simulator_panel_ui, deployment_panel_ui),
             );
     }
 }
