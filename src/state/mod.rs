@@ -147,6 +147,18 @@ impl Default for ZoneBrushConfig {
     }
 }
 
+/// 是否显示网格线（关卡模式与模拟器共用）
+#[derive(Resource, Clone)]
+pub struct GridLinesConfig {
+    pub visible: bool,
+}
+
+impl Default for GridLinesConfig {
+    fn default() -> Self {
+        Self { visible: true }
+    }
+}
+
 /// 橡皮擦配置（模拟器编辑模式）
 #[derive(Resource, Clone)]
 pub struct EraserConfig {
@@ -181,6 +193,7 @@ impl Plugin for StatePlugin {
             .insert_resource(DeploymentZoneData::default())
             .insert_resource(ZoneBrushConfig::default())
             .insert_resource(EraserConfig::default())
+            .insert_resource(GridLinesConfig::default())
             // 注册状态系统
             .add_systems(OnEnter(AppState::Deployment), deployment::enter_deployment)
             .add_systems(OnEnter(AppState::Evolution), evolution::enter_evolution)

@@ -2,7 +2,14 @@ use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
 
 use crate::player::resources::DeploymentResources;
-use crate::state::{AppState, EvolutionConfig, SimulatorState};
+use crate::state::{AppState, EvolutionConfig, GridLinesConfig, SimulatorState};
+
+fn shows_gameplay_hud(state: &AppState) -> bool {
+    matches!(
+        state,
+        AppState::Deployment | AppState::Evolution | AppState::Judgment | AppState::Simulator
+    )
+}
 
 pub fn hud_ui(
     mut contexts: EguiContexts,
@@ -10,7 +17,12 @@ pub fn hud_ui(
     sim_state: Res<State<SimulatorState>>,
     evo_config: Res<EvolutionConfig>,
     deploy_res: Res<DeploymentResources>,
+    mut grid_lines: ResMut<GridLinesConfig>,
 ) {
+    if !shows_gameplay_hud(state.get()) {
+        return;
+    }
+
     let ctx = contexts.ctx_mut();
 
     egui::TopBottomPanel::top("hud_bar").show(ctx, |ui| {
@@ -67,6 +79,18 @@ pub fn hud_ui(
                 egui::RichText::new(format!("速度: {:.0}ms/步", evo_config.speed_ms))
                     .size(14.0),
             );
+
+            ui.separator();
+
+            // 网格线显示
+            let grid_label = if grid_lines.visible {
+                "网格: 显示"
+            } else {
+                "网格: 隐藏"
+            };
+            if ui.button(grid_label).clicked() {
+                grid_lines.visible = !grid_lines.visible;
+            }
         });
     });
 }

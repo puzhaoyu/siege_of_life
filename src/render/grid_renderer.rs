@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use crate::grid::{CellType, Direction, Faction, Grid, GridCoord};
 use crate::player::deploy::{DeployPhase, DragDeployState};
 use crate::input::drag_drop::get_pattern_cells;
-use crate::state::{AppState, DeploymentZoneData, SimulatorState};
+use crate::state::{AppState, DeploymentZoneData, GridLinesConfig, SimulatorState};
 
 /// 网格单元格实体标记组件
 #[derive(Component)]
@@ -19,6 +19,13 @@ pub struct GhostCell;
 /// 部署区域单元格标记
 #[derive(Component)]
 pub struct ZoneCell;
+
+fn should_draw_grid_lines(state: &AppState) -> bool {
+    matches!(
+        state,
+        AppState::Deployment | AppState::Evolution | AppState::Judgment | AppState::Simulator
+    )
+}
 
 /// 网格参数常量（渲染与输入系统共用）
 pub const CELL_SIZE: f32 = 15.0;
@@ -46,6 +53,42 @@ pub fn screen_to_grid(cursor: Vec2, window: &Window, grid: &Grid) -> Option<Grid
         }
     }
     None
+}
+
+/// 网格线渲染（Gizmos）
+pub fn grid_lines_render_system(
+    mut gizmos: Gizmos,
+    grid: Res<Grid>,
+    grid_lines: Res<GridLinesConfig>,
+    state: Res<State<AppState>>,
+) {
+    if !grid_lines.visible || !should_draw_grid_lines(state.get()) {
+        return;
+    }
+
+    let grid_w = grid.width as f32;
+    let grid_h = grid.height as f32;
+    let offset_x = -grid_w * CELL_SIZE / 2.0;
+    let offset_y = grid_h * CELL_SIZE / 2.0 - HUD_OFFSET;
+    let line_color = Color::srgba(0.45, 0.48, 0.55, 0.55);
+
+    for x in 0..=grid.width {
+        let x_pos = offset_x + x as f32 * CELL_SIZE;
+        gizmos.line_2d(
+            Vec2::new(x_pos, offset_y),
+            Vec2::new(x_pos, offset_y - grid_h * CELL_SIZE),
+            line_color,
+        );
+    }
+
+    for y in 0..=grid.height {
+        let y_pos = offset_y - y as f32 * CELL_SIZE;
+        gizmos.line_2d(
+            Vec2::new(offset_x, y_pos),
+            Vec2::new(offset_x + grid_w * CELL_SIZE, y_pos),
+            line_color,
+        );
+    }
 }
 
 /// 网格渲染系统：为每个非空单元格生成/更新 sprite
