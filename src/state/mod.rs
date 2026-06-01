@@ -4,6 +4,7 @@ pub mod deployment;
 pub mod evolution;
 pub mod judgment;
 pub mod simulator;
+pub mod victory;
 
 use bevy::prelude::*;
 
@@ -194,6 +195,7 @@ impl Plugin for StatePlugin {
             .insert_resource(ZoneBrushConfig::default())
             .insert_resource(EraserConfig::default())
             .insert_resource(GridLinesConfig::default())
+            .insert_resource(victory::GameplayVictoryOverlay::default())
             // 注册状态系统
             .add_systems(OnEnter(AppState::Deployment), deployment::enter_deployment)
             .add_systems(OnEnter(AppState::Evolution), evolution::enter_evolution)

@@ -112,22 +112,35 @@ pub fn deployable_names() -> Vec<&'static str> {
     vec!["Glider", "LWSS"]
 }
 
-/// 根据名称获取图案细胞（默认向右，红方）
-pub fn get_pattern_by_name(name: &str, origin: GridCoord) -> Option<Vec<(GridCoord, CellType)>> {
+/// 根据名称获取图案细胞（默认向右，阵营由调用方指定）
+pub fn get_pattern_by_name(
+    name: &str,
+    origin: GridCoord,
+    faction: Faction,
+) -> Option<Vec<(GridCoord, CellType)>> {
+    let cell = CellType::Normal(faction);
     match name {
-        "Glider" => Some(glider_red(origin, Direction::Right)),
-        "LWSS" => Some(lwss_red(origin, Direction::Right)),
-        "Block" => Some(apply_pattern(BLOCK, origin, CellType::Normal(Faction::Red))),
-        "Tub" => Some(apply_pattern(TUB, origin, CellType::Normal(Faction::Red))),
-        "Boat" => Some(apply_pattern(BOAT, origin, CellType::Normal(Faction::Red))),
-        "Loaf" => Some(apply_pattern(LOAF, origin, CellType::Normal(Faction::Red))),
-        "Beehive" => Some(apply_pattern(BEEHIVE, origin, CellType::Normal(Faction::Red))),
-        "Blinker" => Some(apply_pattern(BLINKER, origin, CellType::Normal(Faction::Red))),
-        "Toad" => Some(apply_pattern(TOAD, origin, CellType::Normal(Faction::Red))),
-        "Beacon" => Some(apply_pattern(BEACON, origin, CellType::Normal(Faction::Red))),
-        "Pulsar" => Some(apply_pattern(PULSAR, origin, CellType::Normal(Faction::Red))),
+        "Glider" => Some(glider(origin, Direction::Right, faction)),
+        "LWSS" => Some(lwss(origin, Direction::Right, faction)),
+        "Block" => Some(apply_pattern(BLOCK, origin, cell)),
+        "Tub" => Some(apply_pattern(TUB, origin, cell)),
+        "Boat" => Some(apply_pattern(BOAT, origin, cell)),
+        "Loaf" => Some(apply_pattern(LOAF, origin, cell)),
+        "Beehive" => Some(apply_pattern(BEEHIVE, origin, cell)),
+        "Blinker" => Some(apply_pattern(BLINKER, origin, cell)),
+        "Toad" => Some(apply_pattern(TOAD, origin, cell)),
+        "Beacon" => Some(apply_pattern(BEACON, origin, cell)),
+        "Pulsar" => Some(apply_pattern(PULSAR, origin, cell)),
         _ => None,
     }
+}
+
+fn glider(origin: GridCoord, dir: Direction, faction: Faction) -> Vec<(GridCoord, CellType)> {
+    rotate_pattern(&GLIDER_RIGHT, origin, dir, CellType::Normal(faction))
+}
+
+fn lwss(origin: GridCoord, dir: Direction, faction: Faction) -> Vec<(GridCoord, CellType)> {
+    rotate_pattern(&LWSS_RIGHT, origin, dir, CellType::Normal(faction))
 }
 
 /// 将偏移列表应用到原点

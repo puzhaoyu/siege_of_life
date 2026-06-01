@@ -5,6 +5,7 @@ pub mod level_select_ui;
 pub mod hud;
 pub mod simulator_panel;
 pub mod deployment_panel;
+pub mod victory_overlay;
 
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
@@ -14,6 +15,7 @@ use self::level_select_ui::level_select_ui;
 use self::main_menu::main_menu_ui;
 use self::simulator_panel::simulator_panel_ui;
 use self::deployment_panel::deployment_panel_ui;
+use self::victory_overlay::victory_overlay_ui;
 use self::level_io::{
     apply_pending_level_load, poll_native_file_dialogs, SimulatorLevelMeta,
 };
@@ -37,7 +39,11 @@ impl Plugin for UiPlugin {
             )
             .add_systems(
                 Update,
-                (simulator_panel_ui, deployment_panel_ui),
+                (
+                    simulator_panel_ui,
+                    deployment_panel_ui,
+                    victory_overlay_ui,
+                ),
             );
     }
 }

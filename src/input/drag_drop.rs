@@ -6,7 +6,9 @@ use crate::level::loader::LevelRegistry;
 use crate::player::deploy::{DeployPhase, DeployUnitType, DragDeployState, place_unit};
 use crate::player::resources::DeploymentResources;
 use crate::render::grid_renderer::screen_to_grid;
-use crate::state::{AppState, CurrentLevelId, DeploymentZoneData, SimulatorState};
+use crate::state::deployment::begin_evolution_after_deploy;
+use crate::state::victory::GameplayVictoryOverlay;
+use crate::state::{AppState, CurrentLevelId, DeploymentZoneData, EvolutionConfig, SimulatorState};
 use crate::patterns;
 
 /// 部署交互系统：
@@ -28,8 +30,14 @@ pub fn drag_drop_system(
     windows: Query<&Window>,
     mut next_state: ResMut<NextState<AppState>>,
     mut next_sim_state: ResMut<NextState<SimulatorState>>,
+    mut evo_config: ResMut<EvolutionConfig>,
+    overlay: Res<GameplayVictoryOverlay>,
 ) {
     if contexts.ctx_mut().wants_pointer_input() {
+        return;
+    }
+
+    if overlay.is_active() {
         return;
     }
 
@@ -150,8 +158,20 @@ pub fn drag_drop_system(
                         }
                         true
                     });
-                    if all_valid {
-                        place_unit(&mut grid, unit, pos, dir, &mut deploy_res);
+                    if all_valid && place_unit(&mut grid, unit, pos, dir, &mut deploy_res) {
+                        drag_state.phase = DeployPhase::Idle;
+                        drag_state.unit_type = None;
+                        drag_state.start_pos = None;
+                        drag_state.current_pos = None;
+                        drag_state.rotation_dir = None;
+                        begin_evolution_after_deploy(
+                            &state,
+                            &sim_state,
+                            &mut next_state,
+                            &mut next_sim_state,
+                            &mut evo_config,
+                        );
+                        return;
                     }
                 }
                 // 重置

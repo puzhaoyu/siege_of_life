@@ -9,6 +9,7 @@ use crate::ui::level_io::{
 };
 use crate::player::deploy::DragDeployState;
 use crate::player::resources::DeploymentResources;
+use crate::state::victory::GameplayVictoryOverlay;
 use crate::state::{
     AppState, EvolutionConfig, SelectedElement, SelectedPattern, SimulatorSnapshot, SimulatorState,
 };
@@ -28,8 +29,13 @@ pub fn simulator_panel_ui(
     mut snapshot: ResMut<SimulatorSnapshot>,
     mut drag_state: ResMut<DragDeployState>,
     mut editing: SimulatorEditingParams,
+    overlay: Res<GameplayVictoryOverlay>,
 ) {
     if *state.get() != AppState::Simulator {
+        return;
+    }
+
+    if overlay.is_active() {
         return;
     }
 
@@ -62,16 +68,54 @@ pub fn simulator_panel_ui(
         }
     }
 
-    // 右侧面板
+    // 右侧面板（固定宽度，避免 egui 每帧按内容重算宽度导致抖动）
     egui::SidePanel::right("simulator_panel")
-        .min_width(220.0)
+        .default_width(260.0)
+        .width_range(260.0..=260.0)
+        .resizable(false)
         .show(ctx, |ui| {
+            egui::ScrollArea::vertical()
+                .auto_shrink([false; 2])
+                .show(ui, |ui| {
+                    ui.set_width(248.0);
+                    draw_simulator_panel_contents(
+                        ui,
+                        ctx,
+                        *sim_state.get(),
+                        &mut evo_config,
+                        &mut selected_element,
+                        &mut selected_pattern,
+                        &mut next_state,
+                        &mut next_sim_state,
+                        &mut deploy_res,
+                        &mut snapshot,
+                        &mut drag_state,
+                        &mut editing,
+                    );
+                });
+        });
+}
+
+fn draw_simulator_panel_contents(
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+    sim_state: SimulatorState,
+    evo_config: &mut EvolutionConfig,
+    selected_element: &mut SelectedElement,
+    selected_pattern: &mut SelectedPattern,
+    next_state: &mut NextState<AppState>,
+    next_sim_state: &mut NextState<SimulatorState>,
+    deploy_res: &mut DeploymentResources,
+    snapshot: &mut SimulatorSnapshot,
+    drag_state: &mut DragDeployState,
+    editing: &mut SimulatorEditingParams,
+) {
             ui.heading("模拟器");
 
             ui.add_space(8.0);
 
             // 当前模式
-            let mode_label = match *sim_state.get() {
+            let mode_label = match sim_state {
                 SimulatorState::Editing => "编辑模式",
                 SimulatorState::TrialPlay => "试玩模式 (演化中)",
                 SimulatorState::DeploymentTest => "试玩模式 (部署中)",
@@ -86,7 +130,7 @@ pub fn simulator_panel_ui(
             ui.separator();
 
             // ---- 元素选择 (仅编辑模式) ----
-            if *sim_state.get() == SimulatorState::Editing {
+            if sim_state == SimulatorState::Editing {
                 ui.label(egui::RichText::new("放置元素").strong());
 
                 egui::ComboBox::from_label("类型")
@@ -289,7 +333,7 @@ pub fn simulator_panel_ui(
             }
 
             // ---- 演化控制 (试玩模式) ----
-            if *sim_state.get() == SimulatorState::TrialPlay {
+            if sim_state == SimulatorState::TrialPlay {
                 ui.label(egui::RichText::new("演化控制").strong());
 
                 ui.horizontal(|ui| {
@@ -331,8 +375,8 @@ pub fn simulator_panel_ui(
             }
 
             // ---- 返回编辑按钮 (部署测试 / 试玩模式) ----
-            if *sim_state.get() == SimulatorState::DeploymentTest
-                || *sim_state.get() == SimulatorState::TrialPlay
+            if sim_state == SimulatorState::DeploymentTest
+                || sim_state == SimulatorState::TrialPlay
             {
                 ui.add_space(4.0);
                 if ui
@@ -350,7 +394,7 @@ pub fn simulator_panel_ui(
             }
 
             // ---- 辅助功能 (仅编辑模式) ----
-            if *sim_state.get() == SimulatorState::Editing {
+            if sim_state == SimulatorState::Editing {
                 ui.label(egui::RichText::new("辅助").strong());
 
                 if ui.button("清空全部").clicked() {
@@ -409,7 +453,6 @@ pub fn simulator_panel_ui(
                 next_sim_state.set(SimulatorState::Editing);
                 next_state.set(AppState::MainMenu);
             }
-        });
 }
 
 fn cell_type_name(ct: &CellType) -> &'static str {

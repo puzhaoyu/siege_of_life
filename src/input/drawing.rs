@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_egui::EguiContexts;
 
-use crate::grid::{CellType, Grid, GridCoord};
+use crate::grid::{CellType, Faction, Grid, GridCoord};
 use crate::render::grid_renderer::screen_to_grid;
 use crate::state::{
     AppState, DeploymentZoneData, EraserConfig, SelectedElement, SelectedPattern, SimulatorState,
@@ -137,7 +137,11 @@ pub fn drawing_system(
 
     if let Some(ref pattern_name) = selected_pattern.0 {
         if just_pressed {
-            if let Some(cells) = patterns::get_pattern_by_name(pattern_name, coord) {
+            let faction = match selected_element.0 {
+                CellType::Normal(f) => f,
+                _ => Faction::Red,
+            };
+            if let Some(cells) = patterns::get_pattern_by_name(pattern_name, coord, faction) {
                 for (c, ct) in &cells {
                     changed.push((*c, grid.get(*c)));
                     grid.set(*c, *ct);

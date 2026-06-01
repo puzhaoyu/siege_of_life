@@ -4,7 +4,7 @@ use crate::grid::{CellType, Grid};
 use crate::level::data::LevelData;
 use crate::level::loader::LevelRegistry;
 use crate::player::deploy::DragDeployState;
-use crate::state::{CurrentLevelId, DeploymentZoneData};
+use crate::state::{AppState, CurrentLevelId, DeploymentZoneData, EvolutionConfig, SimulatorState};
 
 /// 进入部署阶段：重置拖拽状态，加载部署区域
 pub fn enter_deployment(
@@ -28,6 +28,27 @@ pub fn enter_deployment(
         }
     } else {
         zone_data.zone.clear();
+    }
+}
+
+/// 部署成功后自动开始演算
+pub fn begin_evolution_after_deploy(
+    state: &State<AppState>,
+    sim_state: &State<SimulatorState>,
+    next_state: &mut NextState<AppState>,
+    next_sim_state: &mut NextState<SimulatorState>,
+    evo_config: &mut EvolutionConfig,
+) {
+    evo_config.is_paused = false;
+    evo_config.current_step = 0;
+    evo_config.timer = 0.0;
+
+    if *state.get() == AppState::Deployment {
+        next_state.set(AppState::Evolution);
+    } else if *state.get() == AppState::Simulator
+        && *sim_state.get() == SimulatorState::DeploymentTest
+    {
+        next_sim_state.set(SimulatorState::TrialPlay);
     }
 }
 

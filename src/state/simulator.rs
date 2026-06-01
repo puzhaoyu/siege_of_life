@@ -2,6 +2,7 @@ use bevy::prelude::*;
 
 use crate::grid::Grid;
 use crate::gol::engine;
+use crate::state::victory::{trigger_trial_victory, GameplayVictoryOverlay};
 use crate::player::deploy::DragDeployState;
 use crate::player::resources::DeploymentResources;
 use crate::state::{
@@ -46,6 +47,7 @@ pub fn simulator_evolution_system(
     state: Res<State<AppState>>,
     sim_state: Res<State<SimulatorState>>,
     mut next_sim_state: ResMut<NextState<SimulatorState>>,
+    mut victory_overlay: ResMut<GameplayVictoryOverlay>,
 ) {
     if *state.get() != AppState::Simulator {
         return;
@@ -53,7 +55,7 @@ pub fn simulator_evolution_system(
     if *sim_state.get() != SimulatorState::TrialPlay {
         return;
     }
-    if evo_config.is_paused {
+    if victory_overlay.is_active() || evo_config.is_paused {
         return;
     }
 
@@ -65,6 +67,12 @@ pub fn simulator_evolution_system(
 
         let (_changed, _bomb_result) = engine::evolution_step(&mut grid);
         engine::check_high_value_destruction(&mut grid);
+
+        if engine::all_high_values_destroyed(&grid) {
+            evo_config.is_paused = true;
+            trigger_trial_victory(&mut victory_overlay);
+            break;
+        }
 
         if evo_config.current_step >= evo_config.steps_per_deployment {
             evo_config.is_paused = true;
