@@ -155,33 +155,41 @@ fn apply_pattern(offsets: &[(isize, isize)], origin: GridCoord, cell: CellType) 
         .collect()
 }
 
-/// 旋转图案
+/// 旋转图案（绕图案包围盒中心旋转，对应 0°/90°/180°/270°）
 fn rotate_pattern(
     offsets: &[(isize, isize)],
     origin: GridCoord,
     dir: Direction,
     cell: CellType,
 ) -> Vec<(GridCoord, CellType)> {
-    let rotated: Vec<(isize, isize)> = offsets
-        .iter()
-        .map(|(dx, dy)| match dir {
-            Direction::Right => (*dx, *dy),
-            Direction::Left => (-*dx, *dy),
-            Direction::Down => (-*dy, *dx),
-            Direction::Up => (*dy, -*dx),
-        })
-        .collect();
+    let (px, py) = pattern_pivot(offsets);
 
-    // 归一化到正偏移区间
-    let min_x = rotated.iter().map(|(x, _)| *x).min().unwrap_or(0);
-    let min_y = rotated.iter().map(|(_, y)| *y).min().unwrap_or(0);
-
-    rotated
+    offsets
         .iter()
         .map(|(dx, dy)| {
-            let x = (origin.x as isize + dx - min_x).max(0) as usize;
-            let y = (origin.y as isize + dy - min_y).max(0) as usize;
+            let (rx, ry) = rotate_offset(dx - px, dy - py, dir);
+            let x = (origin.x as isize + rx).max(0) as usize;
+            let y = (origin.y as isize + ry).max(0) as usize;
             (GridCoord::new(x, y), cell)
         })
         .collect()
+}
+
+/// 图案包围盒中心（作为旋转锚点）
+fn pattern_pivot(offsets: &[(isize, isize)]) -> (isize, isize) {
+    let min_x = offsets.iter().map(|(x, _)| *x).min().unwrap_or(0);
+    let max_x = offsets.iter().map(|(x, _)| *x).max().unwrap_or(0);
+    let min_y = offsets.iter().map(|(_, y)| *y).min().unwrap_or(0);
+    let max_y = offsets.iter().map(|(_, y)| *y).max().unwrap_or(0);
+    ((min_x + max_x) / 2, (min_y + max_y) / 2)
+}
+
+/// 在 y 向下、x 向右的网格中顺时针旋转偏移量
+fn rotate_offset(vx: isize, vy: isize, dir: Direction) -> (isize, isize) {
+    match dir {
+        Direction::Right => (vx, vy),
+        Direction::Down => (-vy, vx),
+        Direction::Left => (-vx, -vy),
+        Direction::Up => (vy, -vx),
+    }
 }

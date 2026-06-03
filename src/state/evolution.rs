@@ -1,12 +1,101 @@
 use bevy::prelude::*;
+use bevy_egui::EguiContexts;
 
 use crate::gol::engine;
 use crate::grid::Grid;
 use crate::level::data::SaveData;
 use crate::level::loader::LevelRegistry;
 use crate::state::judgment::enter_judgment;
-use crate::state::victory::{trigger_level_victory, GameplayVictoryOverlay};
-use crate::state::{AppState, CurrentLevelId, EvolutionConfig};
+use crate::state::victory::{trigger_level_victory, trigger_trial_victory, GameplayVictoryOverlay};
+use crate::state::{AppState, CurrentLevelId, EvolutionConfig, SimulatorState};
+
+/// 一轮演算结束原因
+pub enum RoundEvolutionResult {
+    Victory,
+    StepLimitReached,
+}
+
+/// 立即完成本轮剩余演算步数（跳过动画）
+pub fn fast_forward_current_round(
+    grid: &mut Grid,
+    evo_config: &mut EvolutionConfig,
+) -> RoundEvolutionResult {
+    while evo_config.current_step < evo_config.steps_per_deployment {
+        evo_config.current_step += 1;
+        let (_changed, _bomb_result) = engine::evolution_step(grid);
+        engine::check_high_value_destruction(grid);
+
+        if engine::all_high_values_destroyed(grid) {
+            evo_config.is_paused = true;
+            evo_config.timer = 0.0;
+            return RoundEvolutionResult::Victory;
+        }
+    }
+
+    evo_config.is_paused = true;
+    evo_config.timer = 0.0;
+    RoundEvolutionResult::StepLimitReached
+}
+
+/// 演算中点击画面：跳过动画，直接完成本轮剩余步数
+pub fn skip_evolution_on_click_system(
+    mut contexts: EguiContexts,
+    mouse_input: Res<ButtonInput<MouseButton>>,
+    state: Res<State<AppState>>,
+    sim_state: Res<State<SimulatorState>>,
+    mut victory_overlay: ResMut<GameplayVictoryOverlay>,
+    mut commands: Commands,
+    mut grid: ResMut<Grid>,
+    mut evo_config: ResMut<EvolutionConfig>,
+    current_level_id: Res<CurrentLevelId>,
+    mut save_data: ResMut<SaveData>,
+    registry: Res<LevelRegistry>,
+    mut deploy_res: ResMut<crate::player::resources::DeploymentResources>,
+    mut next_sim_state: ResMut<NextState<SimulatorState>>,
+) {
+    if victory_overlay.is_active() || evo_config.is_paused {
+        return;
+    }
+
+    let is_level_evolving = *state.get() == AppState::Evolution;
+    let is_trial_evolving = *state.get() == AppState::Simulator
+        && *sim_state.get() == SimulatorState::TrialPlay;
+
+    if !is_level_evolving && !is_trial_evolving {
+        return;
+    }
+
+    if contexts.ctx_mut().wants_pointer_input() {
+        return;
+    }
+
+    if !mouse_input.just_pressed(MouseButton::Left) {
+        return;
+    }
+
+    match fast_forward_current_round(&mut grid, &mut evo_config) {
+        RoundEvolutionResult::Victory => {
+            if is_level_evolving {
+                trigger_level_victory(
+                    &mut victory_overlay,
+                    &current_level_id,
+                    &mut save_data,
+                    &registry,
+                );
+            } else {
+                trigger_trial_victory(&mut victory_overlay);
+            }
+        }
+        RoundEvolutionResult::StepLimitReached => {
+            if is_level_evolving {
+                enter_judgment(&mut commands, &grid);
+            } else {
+                deploy_res.deployed_this_round = false;
+                next_sim_state.set(SimulatorState::DeploymentTest);
+            }
+        }
+    }
+}
 
 /// 演化阶段：每帧根据速度推进演化步
 pub fn evolution_system(

@@ -207,10 +207,12 @@ impl Plugin for StatePlugin {
             .add_systems(
                 Update,
                 (
+                    evolution::skip_evolution_on_click_system,
                     evolution::evolution_system.run_if(in_state(AppState::Evolution)),
                     judgment::judgment_system.run_if(in_state(AppState::Judgment)),
                     simulator::simulator_evolution_system.run_if(in_state(AppState::Simulator)),
-                ),
+                )
+                    .chain(),
             );
     }
 }

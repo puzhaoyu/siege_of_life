@@ -109,7 +109,11 @@ pub fn drag_drop_system(
                             };
                             if can_place {
                                 drag_state.start_pos = Some(pos);
-                                drag_state.rotation_dir = Some(Direction::Right);
+                                drag_state.rotation_dir = Some(if let Some(cur) = cursor_grid_pos {
+                                    direction_from_anchor_to_cursor(pos, cur)
+                                } else {
+                                    Direction::Right
+                                });
                                 drag_state.phase = DeployPhase::Rotating;
                             }
                             // 无效位置：不进入旋转模式，静默拒绝（红色预览已给出提示）
@@ -123,21 +127,10 @@ pub fn drag_drop_system(
             drag_state.phase = DeployPhase::Idle;
         }
         DeployPhase::Rotating => {
-            // 旋钮旋转: 鼠标相对落点的方向决定图案朝向
+            // 旋钮旋转: 鼠标相对落点方向 → 四向朝向（每 90° 一档）
             if let Some(anchor) = drag_state.start_pos {
                 if let Some(current) = cursor_grid_pos {
-                    let dx = current.x as isize - anchor.x as isize;
-                    let dy = current.y as isize - anchor.y as isize;
-
-                    // 鼠标移开了至少 1 格才更新方向
-                    if dx.abs() > 0 || dy.abs() > 0 {
-                        let dir = if dx.abs() >= dy.abs() {
-                            if dx > 0 { Direction::Right } else { Direction::Left }
-                        } else {
-                            if dy > 0 { Direction::Down } else { Direction::Up }
-                        };
-                        drag_state.rotation_dir = Some(dir);
-                    }
+                    drag_state.rotation_dir = Some(direction_from_anchor_to_cursor(anchor, current));
                     drag_state.current_pos = Some(current);
                 }
             }
@@ -182,6 +175,29 @@ pub fn drag_drop_system(
                 drag_state.rotation_dir = None;
             }
         }
+    }
+}
+
+/// 根据锚点相对鼠标位置推断四向朝向（0°/90°/180°/270°）
+fn direction_from_anchor_to_cursor(anchor: GridCoord, cursor: GridCoord) -> Direction {
+    let dx = cursor.x as isize - anchor.x as isize;
+    let dy = cursor.y as isize - anchor.y as isize;
+
+    if dx == 0 && dy == 0 {
+        return Direction::Right;
+    }
+
+    let angle = (dy as f32).atan2(dx as f32);
+    const FRAC_PI_4: f32 = std::f32::consts::FRAC_PI_4;
+
+    if angle >= -FRAC_PI_4 && angle < FRAC_PI_4 {
+        Direction::Right
+    } else if angle >= FRAC_PI_4 && angle < 3.0 * FRAC_PI_4 {
+        Direction::Down
+    } else if angle < -FRAC_PI_4 && angle >= -3.0 * FRAC_PI_4 {
+        Direction::Up
+    } else {
+        Direction::Left
     }
 }
 
