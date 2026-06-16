@@ -2,17 +2,23 @@ use bevy::prelude::*;
 
 use crate::grid::Grid;
 use crate::gol::engine;
-use crate::state::victory::{trigger_trial_victory, GameplayVictoryOverlay};
+use crate::render::effects::{ClashEffectEvent, ExplosionEvent, TreasureGlowEvent};
 use crate::player::deploy::DragDeployState;
 use crate::player::resources::DeploymentResources;
-use crate::state::{
-    AppState, DeploymentZoneData, EvolutionConfig, SimulatorSnapshot, SimulatorState,
+use crate::state::victory::{
+    resolve_high_value_victory, GameplayVictoryOverlay, PendingVictory, PendingVictoryKind,
 };
+use crate::state::{AppState, CurrentLevelId, DeploymentZoneData, EvolutionConfig, SimulatorSnapshot, SimulatorState};
 
 /// 模拟器初始化：清空网格
-pub fn enter_simulator(mut grid: ResMut<Grid>, mut snapshot: ResMut<SimulatorSnapshot>) {
+pub fn enter_simulator(
+    mut grid: ResMut<Grid>,
+    mut snapshot: ResMut<SimulatorSnapshot>,
+    mut pending_victory: ResMut<PendingVictory>,
+) {
     grid.clear();
     *snapshot = SimulatorSnapshot::default();
+    pending_victory.clear();
 }
 
 /// 从试玩/部署返回编辑时，恢复进入试玩前的关卡内容
@@ -48,6 +54,13 @@ pub fn simulator_evolution_system(
     sim_state: Res<State<SimulatorState>>,
     mut next_sim_state: ResMut<NextState<SimulatorState>>,
     mut victory_overlay: ResMut<GameplayVictoryOverlay>,
+    mut pending_victory: ResMut<PendingVictory>,
+    current_level_id: Res<CurrentLevelId>,
+    mut save_data: ResMut<crate::level::data::SaveData>,
+    registry: Res<crate::level::loader::LevelRegistry>,
+    mut ev_explosion: EventWriter<ExplosionEvent>,
+    mut ev_treasure_glow: EventWriter<TreasureGlowEvent>,
+    mut ev_clash: EventWriter<ClashEffectEvent>,
 ) {
     if *state.get() != AppState::Simulator {
         return;
@@ -55,7 +68,7 @@ pub fn simulator_evolution_system(
     if *sim_state.get() != SimulatorState::TrialPlay {
         return;
     }
-    if victory_overlay.is_active() || evo_config.is_paused {
+    if victory_overlay.is_active() || pending_victory.is_pending() || evo_config.is_paused {
         return;
     }
 
@@ -65,12 +78,36 @@ pub fn simulator_evolution_system(
         evo_config.timer -= evo_config.speed_ms;
         evo_config.current_step += 1;
 
-        let (_changed, _bomb_result) = engine::evolution_step(&mut grid);
-        engine::check_high_value_destruction(&mut grid);
+        let step_result = engine::evolution_step(&mut grid);
+        let destroyed_high_values = engine::check_high_value_destruction(&mut grid);
+
+        if !step_result.bomb_result.triggered_bombs.is_empty() {
+            ev_explosion.send(ExplosionEvent {
+                positions: step_result.bomb_result.triggered_bombs.clone(),
+            });
+        }
+        if !destroyed_high_values.is_empty() {
+            ev_treasure_glow.send(TreasureGlowEvent {
+                positions: destroyed_high_values.clone(),
+            });
+        }
+        if !step_result.clash_positions.is_empty() {
+            ev_clash.send(ClashEffectEvent {
+                positions: step_result.clash_positions,
+            });
+        }
 
         if engine::all_high_values_destroyed(&grid) {
             evo_config.is_paused = true;
-            trigger_trial_victory(&mut victory_overlay);
+            resolve_high_value_victory(
+                &destroyed_high_values,
+                &mut pending_victory,
+                &mut victory_overlay,
+                PendingVictoryKind::Trial,
+                &current_level_id,
+                &mut save_data,
+                &registry,
+            );
             break;
         }
 

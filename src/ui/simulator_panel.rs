@@ -348,7 +348,7 @@ fn draw_simulator_panel_contents(
                         evo_config.is_paused = !evo_config.is_paused;
                     }
                     if ui.button("单步").clicked() {
-                        let (_changed, _bomb_result) = engine::evolution_step(&mut editing.grid);
+                        let _step_result = engine::evolution_step(&mut editing.grid);
                         engine::check_high_value_destruction(&mut editing.grid);
                         evo_config.current_step += 1;
                     }

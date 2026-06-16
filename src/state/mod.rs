@@ -196,6 +196,7 @@ impl Plugin for StatePlugin {
             .insert_resource(EraserConfig::default())
             .insert_resource(GridLinesConfig::default())
             .insert_resource(victory::GameplayVictoryOverlay::default())
+            .insert_resource(victory::PendingVictory::default())
             // 注册状态系统
             .add_systems(OnEnter(AppState::Deployment), deployment::enter_deployment)
             .add_systems(OnEnter(AppState::Evolution), evolution::enter_evolution)
@@ -211,6 +212,7 @@ impl Plugin for StatePlugin {
                     evolution::evolution_system.run_if(in_state(AppState::Evolution)),
                     judgment::judgment_system.run_if(in_state(AppState::Judgment)),
                     simulator::simulator_evolution_system.run_if(in_state(AppState::Simulator)),
+                    victory::pending_victory_system,
                 )
                     .chain(),
             );

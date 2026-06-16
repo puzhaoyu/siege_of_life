@@ -6,6 +6,8 @@ use crate::grid::{CellType, Grid, GridCoord};
 pub struct BombExplosionResult {
     /// 所有被爆炸影响的坐标集合
     pub affected_cells: HashSet<GridCoord>,
+    /// 实际被触发的炸弹坐标（用于爆炸特效）
+    pub triggered_bombs: Vec<GridCoord>,
 }
 
 /// 处理炸弹：扫描所有炸弹，检测是否被 Normal 细胞触碰，执行链式引爆
@@ -21,7 +23,10 @@ pub fn process_bombs(grid: &mut Grid) -> BombExplosionResult {
         .collect();
 
     if triggered_bombs.is_empty() {
-        return BombExplosionResult { affected_cells: affected };
+        return BombExplosionResult {
+            affected_cells: affected,
+            triggered_bombs: vec![],
+        };
     }
 
     // 2. BFS 链式引爆
@@ -50,5 +55,8 @@ pub fn process_bombs(grid: &mut Grid) -> BombExplosionResult {
         grid.set(*coord, CellType::Empty);
     }
 
-    BombExplosionResult { affected_cells: affected }
+    BombExplosionResult {
+        affected_cells: affected,
+        triggered_bombs: visited.into_iter().collect(),
+    }
 }

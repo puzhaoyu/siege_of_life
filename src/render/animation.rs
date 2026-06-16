@@ -1,81 +1,121 @@
 use bevy::prelude::*;
+use bevy::sprite::TextureAtlasLayout;
 
-/// 动画状态组件
-#[derive(Component)]
-pub struct CellAnimation {
-    pub kind: AnimationKind,
-    pub progress: f32,
-    pub duration: f32,
-}
+use crate::render::grid_renderer::CELL_SIZE;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum AnimationKind {
-    Birth,
-    Death,
     Explosion,
+    TreasureGlow,
+    Clash,
+    Birth,
 }
 
-impl CellAnimation {
-    pub fn new(kind: AnimationKind, duration: f32) -> Self {
+#[derive(Component)]
+pub struct FrameAnimation {
+    pub kind: AnimationKind,
+    pub frame_count: usize,
+    pub current_frame: usize,
+    pub frame_timer: Timer,
+    pub despawn_on_finish: bool,
+    pub looped: bool,
+}
+
+impl FrameAnimation {
+    pub fn one_shot(kind: AnimationKind, frame_count: usize, frame_duration: f32) -> Self {
         Self {
             kind,
-            progress: 0.0,
-            duration,
+            frame_count,
+            current_frame: 0,
+            frame_timer: Timer::from_seconds(frame_duration, TimerMode::Repeating),
+            despawn_on_finish: true,
+            looped: false,
         }
     }
 }
 
-/// 细胞动画系统：更新缩放与透明度
+#[derive(Resource, Clone)]
+pub struct EffectAnimationAssets {
+    pub explosion_image: Handle<Image>,
+    pub treasure_image: Handle<Image>,
+    pub clash_image: Handle<Image>,
+    pub explosion_layout: Handle<TextureAtlasLayout>,
+    pub treasure_layout: Handle<TextureAtlasLayout>,
+    pub clash_layout: Handle<TextureAtlasLayout>,
+}
+
+impl EffectAnimationAssets {
+    pub fn image_for(&self, kind: AnimationKind) -> Handle<Image> {
+        match kind {
+            AnimationKind::Explosion => self.explosion_image.clone(),
+            AnimationKind::TreasureGlow => self.treasure_image.clone(),
+            AnimationKind::Clash => self.clash_image.clone(),
+            AnimationKind::Birth => self.treasure_image.clone(),
+        }
+    }
+
+    pub fn layout_for(&self, kind: AnimationKind) -> Handle<TextureAtlasLayout> {
+        match kind {
+            AnimationKind::Explosion => self.explosion_layout.clone(),
+            AnimationKind::TreasureGlow => self.treasure_layout.clone(),
+            AnimationKind::Clash => self.clash_layout.clone(),
+            AnimationKind::Birth => self.treasure_layout.clone(),
+        }
+    }
+}
+
+pub fn setup_effect_animation_assets(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
+) {
+    let frame_size = UVec2::new(362, 724);
+    let columns = 6;
+    let rows = 1;
+
+    let assets = EffectAnimationAssets {
+        explosion_image: asset_server.load("effects/explosion_sheet.png"),
+        treasure_image: asset_server.load("effects/treasure_sheet.png"),
+        clash_image: asset_server.load("effects/clash_sheet.png"),
+        explosion_layout: atlas_layouts.add(TextureAtlasLayout::from_grid(frame_size, columns, rows, None, None)),
+        treasure_layout: atlas_layouts.add(TextureAtlasLayout::from_grid(frame_size, columns, rows, None, None)),
+        clash_layout: atlas_layouts.add(TextureAtlasLayout::from_grid(frame_size, columns, rows, None, None)),
+    };
+
+    commands.insert_resource(assets);
+}
+
 pub fn animation_system(
     time: Res<Time>,
     mut commands: Commands,
-    mut query: Query<(Entity, &mut CellAnimation, &mut Transform, &mut Sprite)>,
+    mut query: Query<(Entity, &mut FrameAnimation, &mut Sprite, &mut Transform)>,
 ) {
-    for (entity, mut anim, mut transform, mut sprite) in query.iter_mut() {
-        anim.progress += time.delta_secs();
-
-        if anim.progress >= anim.duration {
-            // 动画结束
-            match anim.kind {
-                AnimationKind::Birth => {
-                    transform.scale = Vec3::ONE;
-                    sprite.color.set_alpha(1.0);
-                }
-                AnimationKind::Death | AnimationKind::Explosion => {
-                    commands.entity(entity).despawn();
-                }
-            }
+    for (entity, mut animation, mut sprite, mut transform) in &mut query {
+        animation.frame_timer.tick(time.delta());
+        if !animation.frame_timer.just_finished() {
             continue;
         }
 
-        let t = anim.progress / anim.duration;
+        let next_frame = animation.current_frame + 1;
+        if next_frame >= animation.frame_count {
+            if animation.looped {
+                animation.current_frame = 0;
+            } else if animation.despawn_on_finish {
+                commands.entity(entity).despawn();
+                continue;
+            }
+        } else {
+            animation.current_frame = next_frame;
+        }
 
-        match anim.kind {
-            AnimationKind::Birth => {
-                let scale = ease_out_back(t);
-                transform.scale = Vec3::splat(scale);
-                sprite.color.set_alpha(t);
-            }
-            AnimationKind::Death => {
-                let scale = 1.0 - ease_in_quad(t);
-                transform.scale = Vec3::splat(scale);
-                sprite.color.set_alpha(1.0 - t);
-            }
-            AnimationKind::Explosion => {
-                let scale = 1.0 + t * 2.0;
-                transform.scale = Vec3::splat(scale);
-                sprite.color.set_alpha(1.0 - t);
-            }
+        if let Some(atlas) = sprite.texture_atlas.as_mut() {
+            atlas.index = animation.current_frame;
+        }
+
+        if matches!(animation.kind, AnimationKind::TreasureGlow | AnimationKind::Birth) {
+            let pulse = 1.0 + (animation.current_frame as f32 / animation.frame_count as f32) * 0.15;
+            let base = transform.scale.x.max(CELL_SIZE / 362.0);
+            transform.scale = Vec3::splat(base * pulse);
         }
     }
-}
-
-fn ease_out_back(t: f32) -> f32 {
-    let c1 = 1.70158;
-    let c3 = c1 + 1.0;
-    1.0 + c3 * (t - 1.0).powi(3) + c1 * (t - 1.0).powi(2)
-}
-
-fn ease_in_quad(t: f32) -> f32 {
-    t * t
 }

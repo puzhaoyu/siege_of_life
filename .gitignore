@@ -5,3 +5,7 @@ Cargo.lock.bak
 .idea/
 .vscode/
 *.local.json
+
+# 本地备份/提交包，不上传
+/给/
+/siege_of_life_submission/

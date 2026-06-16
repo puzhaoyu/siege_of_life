@@ -5,6 +5,27 @@ use crate::player::deploy::{DeployPhase, DragDeployState};
 use crate::input::drag_drop::get_pattern_cells;
 use crate::state::{AppState, DeploymentZoneData, GridLinesConfig, SimulatorState};
 
+/// 游戏纹理资源集合
+#[derive(Resource)]
+pub struct GameTextures {
+    pub cell_red: Handle<Image>,
+    pub cell_blue: Handle<Image>,
+    pub wall: Handle<Image>,
+    pub bomb: Handle<Image>,
+    pub high_value: Handle<Image>,
+}
+
+/// 加载游戏纹理资源
+pub fn load_textures(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands.insert_resource(GameTextures {
+        cell_red: asset_server.load("textures/cell_red_simple.png"),
+        cell_blue: asset_server.load("textures/cell_blue_simple.png"),
+        wall: asset_server.load("textures/wall_simple.png"),
+        bomb: asset_server.load("textures/bomb_simple.png"),
+        high_value: asset_server.load("textures/high_value_simple.png"),
+    });
+}
+
 /// 网格单元格实体标记组件
 #[derive(Component)]
 pub struct GridCell {
@@ -91,11 +112,12 @@ pub fn grid_lines_render_system(
     }
 }
 
-/// 网格渲染系统：为每个非空单元格生成/更新 sprite
+/// 网格渲染系统：为每个非空单元格生成/更新 sprite（使用纹理图片）
 pub fn grid_render_system(
     mut commands: Commands,
     grid: Res<Grid>,
     cell_query: Query<(Entity, &GridCell), (Without<GhostCell>, Without<ZoneCell>)>,
+    textures: Res<GameTextures>,
 ) {
     for (entity, _) in cell_query.iter() {
         commands.entity(entity).despawn();
@@ -114,12 +136,12 @@ pub fn grid_render_system(
                 continue;
             }
 
-            let color = match ct {
-                CellType::Normal(Faction::Red) => Color::srgb(1.0, 0.2, 0.2),
-                CellType::Normal(Faction::Blue) => Color::srgb(0.2, 0.4, 1.0),
-                CellType::Wall => Color::srgb(0.4, 0.4, 0.4),
-                CellType::Bomb => Color::srgb(1.0, 0.5, 0.0),
-                CellType::HighValue => Color::srgb(1.0, 0.8, 0.0),
+            let (texture, color) = match ct {
+                CellType::Normal(Faction::Red) => (textures.cell_red.clone(), Color::srgb(1.0, 0.8, 0.8)),
+                CellType::Normal(Faction::Blue) => (textures.cell_blue.clone(), Color::srgb(0.8, 0.9, 1.0)),
+                CellType::Wall => (textures.wall.clone(), Color::srgb(0.9, 0.9, 0.9)),
+                CellType::Bomb => (textures.bomb.clone(), Color::srgb(1.0, 0.9, 0.8)),
+                CellType::HighValue => (textures.high_value.clone(), Color::srgb(1.0, 1.0, 0.9)),
                 _ => continue,
             };
 
@@ -131,6 +153,7 @@ pub fn grid_render_system(
 
             commands.spawn((
                 Sprite {
+                    image: texture,
                     color,
                     custom_size: Some(Vec2::splat(CELL_SIZE)),
                     ..default()

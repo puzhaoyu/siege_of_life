@@ -1,10 +1,45 @@
 use bevy::prelude::*;
 
-use crate::grid::Grid;
+use crate::grid::{Grid, GridCoord};
 use crate::level::data::SaveData;
 use crate::level::loader::LevelRegistry;
 use crate::level::progression;
 use crate::state::{CurrentLevelId, DeploymentZoneData, SimulatorSnapshot};
+
+/// 宝藏发光动画 6 帧 × 0.06s，略留余量再弹出通关
+pub const VICTORY_SETTLE_DELAY_SECS: f32 = 0.42;
+
+/// 延迟结算通关（等待特效播完）
+#[derive(Resource, Default)]
+pub struct PendingVictory {
+    pub kind: Option<PendingVictoryKind>,
+    timer: Option<Timer>,
+}
+
+#[derive(Clone, Copy)]
+pub enum PendingVictoryKind {
+    Level,
+    Trial,
+}
+
+impl PendingVictory {
+    pub fn is_pending(&self) -> bool {
+        self.kind.is_some()
+    }
+
+    pub fn schedule(&mut self, kind: PendingVictoryKind) {
+        self.kind = Some(kind);
+        self.timer = Some(Timer::from_seconds(
+            VICTORY_SETTLE_DELAY_SECS,
+            TimerMode::Once,
+        ));
+    }
+
+    pub fn clear(&mut self) {
+        self.kind = None;
+        self.timer = None;
+    }
+}
 
 /// 闯关成功遮罩（关卡 / 模拟器试玩）
 #[derive(Resource, Default)]
@@ -76,6 +111,65 @@ pub fn trigger_level_victory(
 
 pub fn trigger_trial_victory(overlay: &mut GameplayVictoryOverlay) {
     overlay.kind = Some(VictoryKind::Trial);
+}
+
+/// 等待特效播完后触发通关 UI
+pub fn pending_victory_system(
+    time: Res<Time>,
+    mut pending: ResMut<PendingVictory>,
+    mut overlay: ResMut<GameplayVictoryOverlay>,
+    current_level_id: Res<CurrentLevelId>,
+    mut save_data: ResMut<SaveData>,
+    registry: Res<LevelRegistry>,
+) {
+    if pending.kind.is_none() {
+        return;
+    }
+
+    let Some(timer) = pending.timer.as_mut() else {
+        pending.clear();
+        return;
+    };
+
+    timer.tick(time.delta());
+    if !timer.finished() {
+        return;
+    }
+
+    match pending.kind.take() {
+        Some(PendingVictoryKind::Level) => {
+            trigger_level_victory(&mut overlay, &current_level_id, &mut save_data, &registry);
+        }
+        Some(PendingVictoryKind::Trial) => {
+            trigger_trial_victory(&mut overlay);
+        }
+        None => {}
+    }
+    pending.timer = None;
+}
+
+/// 若本步摧毁了高价值单位，则延迟结算以便播放动画
+pub fn resolve_high_value_victory(
+    destroyed_high_values: &[GridCoord],
+    pending: &mut PendingVictory,
+    overlay: &mut GameplayVictoryOverlay,
+    kind: PendingVictoryKind,
+    current_level_id: &CurrentLevelId,
+    save_data: &mut SaveData,
+    registry: &LevelRegistry,
+) {
+    if destroyed_high_values.is_empty() {
+        match kind {
+            PendingVictoryKind::Level => {
+                trigger_level_victory(overlay, current_level_id, save_data, registry);
+            }
+            PendingVictoryKind::Trial => {
+                trigger_trial_victory(overlay);
+            }
+        }
+    } else {
+        pending.schedule(kind);
+    }
 }
 
 /// 从试玩快照恢复网格（不消耗快照，供「重新开始」使用）
