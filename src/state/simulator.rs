@@ -6,7 +6,8 @@ use crate::render::effects::{ClashEffectEvent, ExplosionEvent, TreasureGlowEvent
 use crate::player::deploy::DragDeployState;
 use crate::player::resources::DeploymentResources;
 use crate::state::victory::{
-    resolve_high_value_victory, GameplayVictoryOverlay, PendingVictory, PendingVictoryKind,
+    any_gameplay_overlay_active, resolve_high_value_victory, trigger_trial_defeat,
+    GameplayDefeatOverlay, GameplayVictoryOverlay, PendingVictory, PendingVictoryKind,
 };
 use crate::state::{AppState, CurrentLevelId, DeploymentZoneData, EvolutionConfig, SimulatorSnapshot, SimulatorState};
 
@@ -15,10 +16,12 @@ pub fn enter_simulator(
     mut grid: ResMut<Grid>,
     mut snapshot: ResMut<SimulatorSnapshot>,
     mut pending_victory: ResMut<PendingVictory>,
+    mut defeat_overlay: ResMut<GameplayDefeatOverlay>,
 ) {
     grid.clear();
     *snapshot = SimulatorSnapshot::default();
     pending_victory.clear();
+    defeat_overlay.clear();
 }
 
 /// 从试玩/部署返回编辑时，恢复进入试玩前的关卡内容
@@ -54,6 +57,7 @@ pub fn simulator_evolution_system(
     sim_state: Res<State<SimulatorState>>,
     mut next_sim_state: ResMut<NextState<SimulatorState>>,
     mut victory_overlay: ResMut<GameplayVictoryOverlay>,
+    mut defeat_overlay: ResMut<GameplayDefeatOverlay>,
     mut pending_victory: ResMut<PendingVictory>,
     current_level_id: Res<CurrentLevelId>,
     mut save_data: ResMut<crate::level::data::SaveData>,
@@ -68,7 +72,10 @@ pub fn simulator_evolution_system(
     if *sim_state.get() != SimulatorState::TrialPlay {
         return;
     }
-    if victory_overlay.is_active() || pending_victory.is_pending() || evo_config.is_paused {
+    if any_gameplay_overlay_active(&victory_overlay, &defeat_overlay)
+        || pending_victory.is_pending()
+        || evo_config.is_paused
+    {
         return;
     }
 
@@ -113,8 +120,12 @@ pub fn simulator_evolution_system(
 
         if evo_config.current_step >= evo_config.steps_per_deployment {
             evo_config.is_paused = true;
-            deploy_res.deployed_this_round = false;
-            next_sim_state.set(SimulatorState::DeploymentTest);
+            if deploy_res.remaining_gliders == 0 && deploy_res.remaining_lwss == 0 {
+                trigger_trial_defeat(&mut defeat_overlay);
+            } else {
+                deploy_res.deployed_this_round = false;
+                next_sim_state.set(SimulatorState::DeploymentTest);
+            }
             break;
         }
     }

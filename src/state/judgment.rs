@@ -4,7 +4,9 @@ use crate::gol::engine;
 use crate::grid::Grid;
 use crate::level::data::SaveData;
 use crate::player::resources::DeploymentResources;
-use crate::state::victory::{trigger_level_victory, GameplayVictoryOverlay};
+use crate::state::victory::{
+    trigger_level_defeat, trigger_level_victory, GameplayDefeatOverlay, GameplayVictoryOverlay,
+};
 use crate::state::{AppState, CurrentJudgment, CurrentLevelId, EvolutionConfig, JudgmentResult};
 
 /// 进入判定阶段
@@ -26,12 +28,12 @@ pub fn enter_judgment(commands: &mut Commands, grid: &Grid) {
 /// 判定阶段系统：根据结果自动转换状态
 pub fn judgment_system(
     mut next_state: ResMut<NextState<AppState>>,
-    mut dialog: ResMut<crate::state::DialogMessage>,
     deploy_res: Res<DeploymentResources>,
     current_level_id: Res<CurrentLevelId>,
     mut save_data: ResMut<SaveData>,
     registry: Res<crate::level::loader::LevelRegistry>,
     mut victory_overlay: ResMut<GameplayVictoryOverlay>,
+    mut defeat_overlay: ResMut<GameplayDefeatOverlay>,
     mut evo_config: ResMut<EvolutionConfig>,
     mut judgment: ResMut<CurrentJudgment>,
 ) {
@@ -56,13 +58,15 @@ pub fn judgment_system(
             if has_remaining {
                 next_state.set(AppState::Deployment);
             } else {
-                dialog.0 = Some("任务失败！部署资源已耗尽。".to_string());
-                next_state.set(AppState::LevelSelect);
+                trigger_level_defeat(&mut defeat_overlay);
+                evo_config.is_paused = true;
+                next_state.set(AppState::Evolution);
             }
         }
         JudgmentResult::Defeat => {
-            dialog.0 = Some("任务失败！部署资源已耗尽。".to_string());
-            next_state.set(AppState::LevelSelect);
+            trigger_level_defeat(&mut defeat_overlay);
+            evo_config.is_paused = true;
+            next_state.set(AppState::Evolution);
         }
     }
 }

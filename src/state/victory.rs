@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy::ecs::system::SystemParam;
 
 use crate::grid::{Grid, GridCoord};
 use crate::level::data::SaveData;
@@ -111,6 +112,56 @@ pub fn trigger_level_victory(
 
 pub fn trigger_trial_victory(overlay: &mut GameplayVictoryOverlay) {
     overlay.kind = Some(VictoryKind::Trial);
+}
+
+/// 闯关失败遮罩（关卡 / 模拟器试玩）
+#[derive(Resource, Default)]
+pub struct GameplayDefeatOverlay {
+    pub kind: Option<DefeatKind>,
+}
+
+#[derive(Clone, Copy)]
+pub enum DefeatKind {
+    Level,
+    Trial,
+}
+
+impl GameplayDefeatOverlay {
+    pub fn is_active(&self) -> bool {
+        self.kind.is_some()
+    }
+
+    pub fn clear(&mut self) {
+        self.kind = None;
+    }
+}
+
+pub fn trigger_level_defeat(overlay: &mut GameplayDefeatOverlay) {
+    overlay.kind = Some(DefeatKind::Level);
+}
+
+pub fn trigger_trial_defeat(overlay: &mut GameplayDefeatOverlay) {
+    overlay.kind = Some(DefeatKind::Trial);
+}
+
+pub fn any_gameplay_overlay_active(
+    victory: &GameplayVictoryOverlay,
+    defeat: &GameplayDefeatOverlay,
+) -> bool {
+    victory.is_active() || defeat.is_active()
+}
+
+/// 合并胜利/失败遮罩查询，避免系统参数过多
+#[derive(SystemParam)]
+pub struct GameplayOverlayState<'w> {
+    pub victory: Res<'w, GameplayVictoryOverlay>,
+    pub defeat: Res<'w, GameplayDefeatOverlay>,
+}
+
+impl GameplayOverlayState<'_> {
+    pub fn blocks_input(&self) -> bool {
+        any_gameplay_overlay_active(&self.victory, &self.defeat)
+    }
 }
 
 /// 等待特效播完后触发通关 UI

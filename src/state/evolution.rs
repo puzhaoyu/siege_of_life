@@ -8,7 +8,8 @@ use crate::level::data::SaveData;
 use crate::level::loader::LevelRegistry;
 use crate::state::judgment::enter_judgment;
 use crate::state::victory::{
-    resolve_high_value_victory, PendingVictory, PendingVictoryKind, GameplayVictoryOverlay,
+    any_gameplay_overlay_active, resolve_high_value_victory, trigger_trial_defeat,
+    GameplayDefeatOverlay, PendingVictory, PendingVictoryKind, GameplayVictoryOverlay,
 };
 use crate::state::{AppState, CurrentLevelId, EvolutionConfig, SimulatorState};
 
@@ -51,6 +52,7 @@ pub fn skip_evolution_on_click_system(
     state: Res<State<AppState>>,
     sim_state: Res<State<SimulatorState>>,
     mut victory_overlay: ResMut<GameplayVictoryOverlay>,
+    mut defeat_overlay: ResMut<GameplayDefeatOverlay>,
     mut pending_victory: ResMut<PendingVictory>,
     mut commands: Commands,
     mut grid: ResMut<Grid>,
@@ -62,7 +64,10 @@ pub fn skip_evolution_on_click_system(
     mut next_sim_state: ResMut<NextState<SimulatorState>>,
     mut ev_treasure_glow: EventWriter<TreasureGlowEvent>,
 ) {
-    if victory_overlay.is_active() || pending_victory.is_pending() || evo_config.is_paused {
+    if any_gameplay_overlay_active(&victory_overlay, &defeat_overlay)
+        || pending_victory.is_pending()
+        || evo_config.is_paused
+    {
         return;
     }
 
@@ -116,6 +121,9 @@ pub fn skip_evolution_on_click_system(
         RoundEvolutionResult::StepLimitReached => {
             if is_level_evolving {
                 enter_judgment(&mut commands, &grid);
+            } else if deploy_res.remaining_gliders == 0 && deploy_res.remaining_lwss == 0 {
+                trigger_trial_defeat(&mut defeat_overlay);
+                evo_config.is_paused = true;
             } else {
                 deploy_res.deployed_this_round = false;
                 next_sim_state.set(SimulatorState::DeploymentTest);
@@ -132,6 +140,7 @@ pub fn evolution_system(
     mut evo_config: ResMut<EvolutionConfig>,
     state: Res<State<AppState>>,
     mut victory_overlay: ResMut<GameplayVictoryOverlay>,
+    defeat_overlay: Res<GameplayDefeatOverlay>,
     mut pending_victory: ResMut<PendingVictory>,
     current_level_id: Res<CurrentLevelId>,
     mut save_data: ResMut<SaveData>,
@@ -143,7 +152,11 @@ pub fn evolution_system(
     if *state.get() != AppState::Evolution {
         return;
     }
-    if victory_overlay.is_active() || pending_victory.is_pending() || evo_config.is_paused {
+    if victory_overlay.is_active()
+        || defeat_overlay.is_active()
+        || pending_victory.is_pending()
+        || evo_config.is_paused
+    {
         return;
     }
 
@@ -194,13 +207,22 @@ pub fn evolution_system(
     }
 }
 
-/// 进入演化阶段时重置步数
+/// 进入演化阶段时重置步数（从部署进入时）
+/// 若已显示胜利/失败遮罩（例如判定后回到演算画面），则不要重置以免清掉弹窗并重新开跑
 pub fn enter_evolution(
     mut evo_config: ResMut<EvolutionConfig>,
     mut pending_victory: ResMut<PendingVictory>,
+    mut defeat_overlay: ResMut<GameplayDefeatOverlay>,
+    victory_overlay: Res<GameplayVictoryOverlay>,
 ) {
+    if victory_overlay.is_active() || defeat_overlay.is_active() {
+        evo_config.is_paused = true;
+        return;
+    }
+
     evo_config.current_step = 0;
     evo_config.is_paused = false;
     evo_config.timer = 0.0;
     pending_victory.clear();
+    defeat_overlay.clear();
 }

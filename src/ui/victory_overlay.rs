@@ -7,7 +7,7 @@ use crate::player::deploy::DragDeployState;
 use crate::player::resources::DeploymentResources;
 use crate::state::deployment::load_level_to_grid;
 use crate::state::victory::{
-    apply_trial_snapshot, GameplayVictoryOverlay, VictoryKind,
+    apply_trial_snapshot, DefeatKind, GameplayDefeatOverlay, GameplayVictoryOverlay, VictoryKind,
 };
 use crate::state::{
     AppState, CurrentLevelId, DeploymentZoneData, EvolutionConfig, SimulatorDeployConfig,
@@ -299,4 +299,159 @@ fn restart_trial(
     evo_config.timer = 0.0;
     *drag_state = DragDeployState::default();
     next_sim_state.set(SimulatorState::DeploymentTest);
+}
+
+pub fn defeat_overlay_ui(
+    mut contexts: EguiContexts,
+    mut defeat_overlay: ResMut<GameplayDefeatOverlay>,
+    state: Res<State<AppState>>,
+    sim_state: Res<State<SimulatorState>>,
+    mut next_state: ResMut<NextState<AppState>>,
+    mut next_sim_state: ResMut<NextState<SimulatorState>>,
+    mut current_level_id: ResMut<CurrentLevelId>,
+    registry: Res<LevelRegistry>,
+    mut grid: ResMut<Grid>,
+    mut zone_data: ResMut<DeploymentZoneData>,
+    mut deploy_res: ResMut<DeploymentResources>,
+    mut evo_config: ResMut<EvolutionConfig>,
+    mut drag_state: ResMut<DragDeployState>,
+    snapshot: Res<SimulatorSnapshot>,
+    deploy_config: Res<SimulatorDeployConfig>,
+) {
+    let Some(kind) = defeat_overlay.kind else {
+        return;
+    };
+    let kind = kind;
+
+    let ctx = contexts.ctx_mut();
+
+    egui::CentralPanel::default()
+        .frame(
+            egui::Frame::none()
+                .fill(egui::Color32::from_rgba_unmultiplied(0, 0, 0, 160)),
+        )
+        .show(ctx, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.add_space(ui.available_height() * 0.28);
+
+                egui::Frame::window(ui.style())
+                    .inner_margin(egui::Margin::symmetric(32.0, 28.0))
+                    .show(ui, |ui| {
+                        ui.set_min_width(220.0);
+                        ui.vertical_centered(|ui| {
+                            ui.label(
+                                egui::RichText::new("任务失败")
+                                    .size(32.0)
+                                    .strong()
+                                    .color(egui::Color32::from_rgb(255, 120, 120)),
+                            );
+                            ui.add_space(12.0);
+                            ui.label(
+                                egui::RichText::new("部署资源已耗尽。")
+                                    .size(16.0)
+                                    .color(egui::Color32::from_rgb(220, 220, 220)),
+                            );
+                            ui.add_space(24.0);
+
+                            match kind {
+                                DefeatKind::Level => {
+                                    if ui
+                                        .add_sized(
+                                            egui::vec2(200.0, 44.0),
+                                            egui::Button::new(
+                                                egui::RichText::new("重新开始").size(18.0),
+                                            ),
+                                        )
+                                        .clicked()
+                                    {
+                                        let id = match &current_level_id.0 {
+                                            Some(id) => id.clone(),
+                                            None => return,
+                                        };
+                                        let data = match registry.get(&id) {
+                                            Some(d) => d.clone(),
+                                            None => return,
+                                        };
+                                        defeat_overlay.clear();
+                                        load_level_session(
+                                            &id,
+                                            &data,
+                                            &mut current_level_id,
+                                            &mut grid,
+                                            &mut zone_data,
+                                            &mut deploy_res,
+                                            &mut evo_config,
+                                            &mut drag_state,
+                                            &mut next_state,
+                                        );
+                                    }
+                                    ui.add_space(8.0);
+
+                                    if ui
+                                        .add_sized(
+                                            egui::vec2(200.0, 44.0),
+                                            egui::Button::new(
+                                                egui::RichText::new("返回").size(18.0),
+                                            ),
+                                        )
+                                        .clicked()
+                                    {
+                                        defeat_overlay.clear();
+                                        *drag_state = DragDeployState::default();
+                                        next_state.set(AppState::LevelSelect);
+                                    }
+                                }
+                                DefeatKind::Trial => {
+                                    if ui
+                                        .add_sized(
+                                            egui::vec2(200.0, 44.0),
+                                            egui::Button::new(
+                                                egui::RichText::new("重新开始").size(18.0),
+                                            ),
+                                        )
+                                        .clicked()
+                                    {
+                                        if !apply_trial_snapshot(&snapshot, &mut grid, &mut zone_data) {
+                                            return;
+                                        }
+                                        defeat_overlay.clear();
+                                        deploy_res.remaining_gliders = deploy_config.max_gliders;
+                                        deploy_res.remaining_lwss = deploy_config.max_lwss;
+                                        deploy_res.deployed_this_round = false;
+                                        evo_config.current_step = 0;
+                                        evo_config.is_paused = true;
+                                        evo_config.timer = 0.0;
+                                        *drag_state = DragDeployState::default();
+                                        next_sim_state.set(SimulatorState::DeploymentTest);
+                                    }
+                                    ui.add_space(8.0);
+
+                                    if ui
+                                        .add_sized(
+                                            egui::vec2(200.0, 44.0),
+                                            egui::Button::new(
+                                                egui::RichText::new("返回").size(18.0),
+                                            ),
+                                        )
+                                        .clicked()
+                                    {
+                                        defeat_overlay.clear();
+                                        *drag_state = DragDeployState::default();
+                                        evo_config.is_paused = true;
+                                        evo_config.current_step = 0;
+                                        evo_config.timer = 0.0;
+                                        next_sim_state.set(SimulatorState::Editing);
+                                    }
+                                }
+                            }
+                        });
+                    });
+            });
+        });
+
+    if *state.get() == AppState::Evolution
+        || (*state.get() == AppState::Simulator && *sim_state.get() == SimulatorState::TrialPlay)
+    {
+        evo_config.is_paused = true;
+    }
 }

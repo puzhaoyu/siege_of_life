@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
 
 use crate::player::resources::DeploymentResources;
-use crate::state::victory::GameplayVictoryOverlay;
+use crate::state::victory::GameplayOverlayState;
 use crate::state::{AppState, EvolutionConfig, GridLinesConfig, SimulatorState};
 
 fn shows_gameplay_hud(state: &AppState) -> bool {
@@ -19,9 +19,9 @@ pub fn hud_ui(
     evo_config: Res<EvolutionConfig>,
     deploy_res: Res<DeploymentResources>,
     mut grid_lines: ResMut<GridLinesConfig>,
-    overlay: Res<GameplayVictoryOverlay>,
+    overlay: GameplayOverlayState,
 ) {
-    if !shows_gameplay_hud(state.get()) || overlay.is_active() {
+    if !shows_gameplay_hud(state.get()) || overlay.blocks_input() {
         return;
     }
 

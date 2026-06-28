@@ -5,7 +5,7 @@ use crate::grid::Direction;
 use crate::input::drag_drop::start_drag;
 use crate::player::deploy::{DeployPhase, DeployUnitType, DragDeployState};
 use crate::player::resources::DeploymentResources;
-use crate::state::victory::GameplayVictoryOverlay;
+use crate::state::victory::GameplayOverlayState;
 use crate::state::{AppState, SimulatorState};
 
 pub fn deployment_panel_ui(
@@ -16,7 +16,7 @@ pub fn deployment_panel_ui(
     deploy_res: Res<DeploymentResources>,
     mut next_state: ResMut<NextState<AppState>>,
     mut next_sim_state: ResMut<NextState<SimulatorState>>,
-    overlay: Res<GameplayVictoryOverlay>,
+    overlay: GameplayOverlayState,
 ) {
     let is_level_deploy = *state.get() == AppState::Deployment;
     let is_sim_deploy = *state.get() == AppState::Simulator
@@ -26,7 +26,7 @@ pub fn deployment_panel_ui(
         return;
     }
 
-    if overlay.is_active() {
+    if overlay.blocks_input() {
         return;
     }
 

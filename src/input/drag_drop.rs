@@ -7,7 +7,7 @@ use crate::player::deploy::{DeployPhase, DeployUnitType, DragDeployState, place_
 use crate::player::resources::DeploymentResources;
 use crate::render::grid_renderer::screen_to_grid;
 use crate::state::deployment::begin_evolution_after_deploy;
-use crate::state::victory::GameplayVictoryOverlay;
+use crate::state::victory::GameplayOverlayState;
 use crate::state::{AppState, CurrentLevelId, DeploymentZoneData, EvolutionConfig, SimulatorState};
 use crate::patterns;
 
@@ -31,13 +31,13 @@ pub fn drag_drop_system(
     mut next_state: ResMut<NextState<AppState>>,
     mut next_sim_state: ResMut<NextState<SimulatorState>>,
     mut evo_config: ResMut<EvolutionConfig>,
-    overlay: Res<GameplayVictoryOverlay>,
+    overlay: GameplayOverlayState,
 ) {
     if contexts.ctx_mut().wants_pointer_input() {
         return;
     }
 
-    if overlay.is_active() {
+    if overlay.blocks_input() {
         return;
     }
 

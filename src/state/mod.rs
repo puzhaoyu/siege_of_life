@@ -196,6 +196,7 @@ impl Plugin for StatePlugin {
             .insert_resource(EraserConfig::default())
             .insert_resource(GridLinesConfig::default())
             .insert_resource(victory::GameplayVictoryOverlay::default())
+            .insert_resource(victory::GameplayDefeatOverlay::default())
             .insert_resource(victory::PendingVictory::default())
             // 注册状态系统
             .add_systems(OnEnter(AppState::Deployment), deployment::enter_deployment)

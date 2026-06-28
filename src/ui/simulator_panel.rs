@@ -9,7 +9,7 @@ use crate::ui::level_io::{
 };
 use crate::player::deploy::DragDeployState;
 use crate::player::resources::DeploymentResources;
-use crate::state::victory::GameplayVictoryOverlay;
+use crate::state::victory::GameplayOverlayState;
 use crate::state::{
     AppState, EvolutionConfig, SelectedElement, SelectedPattern, SimulatorSnapshot, SimulatorState,
 };
@@ -29,13 +29,13 @@ pub fn simulator_panel_ui(
     mut snapshot: ResMut<SimulatorSnapshot>,
     mut drag_state: ResMut<DragDeployState>,
     mut editing: SimulatorEditingParams,
-    overlay: Res<GameplayVictoryOverlay>,
+    overlay: GameplayOverlayState,
 ) {
     if *state.get() != AppState::Simulator {
         return;
     }
 
-    if overlay.is_active() {
+    if overlay.blocks_input() {
         return;
     }
 
