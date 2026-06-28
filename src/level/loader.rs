@@ -38,6 +38,8 @@ pub fn load_builtin_levels() -> LevelRegistry {
         ("level_01", include_str!("../../assets/levels/level_01.json")),
         ("level_02", include_str!("../../assets/levels/level_02.json")),
         ("level_03", include_str!("../../assets/levels/level_03.json")),
+        ("level_04", include_str!("../../assets/levels/level_04.json")),
+        ("level_05", include_str!("../../assets/levels/level_05.json")),
     ];
 
     for (label, data_str) in files {
